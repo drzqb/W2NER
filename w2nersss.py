@@ -3,7 +3,7 @@
     bert通过transformers加载
     自定义训练过程
     两个不同的学习率
-    技巧使用： 2. 两个三对角不可能标签给logits添加负无穷项
+    技巧使用： 1. 两个三对角添加新特征向量
 '''
 import os
 
@@ -27,7 +27,7 @@ parser.add_argument('--lr', type=float, default=1.0e-5, help='Initial learing ra
 parser.add_argument('--eps', type=float, default=1.0e-6, help='epsilon')
 parser.add_argument('--label_num', type=int, default=7, help='number of ner labels')
 parser.add_argument('--per_save', type=int, default=int(np.ceil(6938 / 2)), help='save model per num')
-parser.add_argument('--check', type=str, default='model/w2ners', help='The path where model saved')
+parser.add_argument('--check', type=str, default='model/w2nersss', help='The path where model saved')
 parser.add_argument('--mode', type=str, default='train0', help='The mode of train or predict as follows: '
                                                                'train0: begin to train or retrain'
                                                                'tran1:continue to train'
@@ -136,6 +136,10 @@ class W2NER(keras.layers.Layer):
                                           dtype=tf.float32,
                                           name='project')
 
+        self.tri = self.add_weight(name="tri",
+                                   shape=[2, 768],
+                                   initializer='glorot_uniform',
+                                   trainable=True)
         super(W2NER, self).build(input_shape)
 
     def call(self, inputs, **kwargs):
@@ -143,19 +147,29 @@ class W2NER(keras.layers.Layer):
         x, span, seqlen = inputs
 
         N = tf.shape(x)[1]
+        hidden = tf.shape(x)[2]
 
         # B*N*N*768
         x1 = tf.tile(tf.expand_dims(x, 2), [1, 1, N, 1])
         x2 = tf.transpose(x1, perm=[0, 2, 1, 3])
 
+        # B*N*N*(768*2)
+        # xx = tf.concat([x1, x2], axis=-1)
+
+        # B*N*N*(768*2)
+        # xx1 = x1 + x2
+        # xx2 = x1 * x2
+        # xx = tf.concat([xx1, xx2], axis=-1)
+
         # B*N*N*768
         xx = x1 * x2
+        # xx = x1 * x2 + x1 + x2
+
+        # B*N*N*768
+        xx = tri(xx, self.tri, N, hidden)
 
         # B*N*N*7
         logits = self.project(xx)
-
-        # B*N*N*7
-        logits = tri2(logits, N)
 
         # B*N*N*7
         softmax = tf.nn.softmax(logits)
@@ -208,23 +222,22 @@ class W2NER(keras.layers.Layer):
         return predict, tp, tn, fp, loss, accuracy
 
 
-def tri2(x, N):
-    y = (1. - tf.pow(2., 31.)) * tf.constant([[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                              [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0]])
-
+def tri(x, y, N, hidden):
     a = tf.sequence_mask(tf.range(1, N + 1), maxlen=N)
 
     aa = tf.cast(a, tf.float32)
-    aa = tf.tile(tf.expand_dims(aa, axis=2), [1, 1, params.label_num])
+    aa = tf.tile(tf.expand_dims(aa, axis=2), [1, 1, hidden])
 
     bb = aa * y[0]
 
+    xx = x + bb
+
     aaa = tf.cast(tf.logical_not(a), tf.float32)
-    aaa = tf.tile(tf.expand_dims(aaa, axis=2), [1, 1, params.label_num])
+    aaa = tf.tile(tf.expand_dims(aaa, axis=2), [1, 1, hidden])
 
     bbb = aaa * y[1]
 
-    xx = x + bb + bbb
+    xx = xx + bbb
 
     return xx
 
@@ -643,7 +656,7 @@ class USER:
         plt.suptitle("Model Metrics")
 
         plt.tight_layout()
-        plt.savefig("w2ners_PRF.jpg", dpi=500, bbox_inches="tight")
+        plt.savefig("w2nersss_PRF.jpg", dpi=500, bbox_inches="tight")
 
 
 if __name__ == '__main__':

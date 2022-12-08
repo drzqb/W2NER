@@ -3,7 +3,7 @@
     bert通过transformers加载
     自定义训练过程
     两个不同的学习率
-    技巧使用： 2. 两个三对角不可能标签给logits添加负无穷项
+    技巧使用：
 '''
 import os
 
@@ -27,7 +27,7 @@ parser.add_argument('--lr', type=float, default=1.0e-5, help='Initial learing ra
 parser.add_argument('--eps', type=float, default=1.0e-6, help='epsilon')
 parser.add_argument('--label_num', type=int, default=7, help='number of ner labels')
 parser.add_argument('--per_save', type=int, default=int(np.ceil(6938 / 2)), help='save model per num')
-parser.add_argument('--check', type=str, default='model/w2ners', help='The path where model saved')
+parser.add_argument('--check', type=str, default='model/w2nerss', help='The path where model saved')
 parser.add_argument('--mode', type=str, default='train0', help='The mode of train or predict as follows: '
                                                                'train0: begin to train or retrain'
                                                                'tran1:continue to train'
@@ -155,9 +155,6 @@ class W2NER(keras.layers.Layer):
         logits = self.project(xx)
 
         # B*N*N*7
-        logits = tri2(logits, N)
-
-        # B*N*N*7
         softmax = tf.nn.softmax(logits)
 
         # B*N*N
@@ -206,28 +203,6 @@ class W2NER(keras.layers.Layer):
                                    tf.float32))
 
         return predict, tp, tn, fp, loss, accuracy
-
-
-def tri2(x, N):
-    y = (1. - tf.pow(2., 31.)) * tf.constant([[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                              [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0]])
-
-    a = tf.sequence_mask(tf.range(1, N + 1), maxlen=N)
-
-    aa = tf.cast(a, tf.float32)
-    aa = tf.tile(tf.expand_dims(aa, axis=2), [1, 1, params.label_num])
-
-    bb = aa * y[0]
-
-    aaa = tf.cast(tf.logical_not(a), tf.float32)
-    aaa = tf.tile(tf.expand_dims(aaa, axis=2), [1, 1, params.label_num])
-
-    bbb = aaa * y[1]
-
-    xx = x + bb + bbb
-
-    return xx
-
 
 def querycheck(predict):
     sys.stdout.write('\n')
@@ -643,7 +618,7 @@ class USER:
         plt.suptitle("Model Metrics")
 
         plt.tight_layout()
-        plt.savefig("w2ners_PRF.jpg", dpi=500, bbox_inches="tight")
+        plt.savefig("w2nerss_PRF.jpg", dpi=500, bbox_inches="tight")
 
 
 if __name__ == '__main__':
