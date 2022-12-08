@@ -153,17 +153,8 @@ class W2NER(keras.layers.Layer):
         x1 = tf.tile(tf.expand_dims(x, 2), [1, 1, N, 1])
         x2 = tf.transpose(x1, perm=[0, 2, 1, 3])
 
-        # B*N*N*(768*2)
-        # xx = tf.concat([x1, x2], axis=-1)
-
-        # B*N*N*(768*2)
-        # xx1 = x1 + x2
-        # xx2 = x1 * x2
-        # xx = tf.concat([xx1, xx2], axis=-1)
-
         # B*N*N*768
         xx = x1 * x2
-        # xx = x1 * x2 + x1 + x2
 
         # B*N*N*768
         xx = tri(xx, self.tri, N, hidden)
@@ -213,7 +204,7 @@ class W2NER(keras.layers.Layer):
         # 是实体，预测是相同实体
         tp = tf.reduce_sum(tf.cast(tf.logical_and(tf.equal(predict, span), tf.greater(span, 0)), tf.float32))
 
-        # 是实体，预测不是相同实体
+        # 是实体，预测不是实体或者不是相同实体
         tn = tf.reduce_sum(tf.cast(tf.logical_and(tf.not_equal(predict, span), tf.greater(span, 0)), tf.float32))
 
         # 不是实体，预测是实体
@@ -276,8 +267,8 @@ def querycheck(predict):
         print(sen)
         lensen = len(sen)
 
-        # for prepre in pre:
-        #     print(prepre)
+        for prepre in pre:
+            print(prepre)
 
         for j in range(lensen):
             for k in range(0, j + 1):
@@ -706,19 +697,19 @@ if __name__ == '__main__':
         char_dict = load_vocab("data/OriginalFiles/vocab.txt")
         char_inverse_dict = {v: k for k, v in char_dict.items()}
 
-        # sentences = [
-        #     '左侧粗隆间骨折。',
-        #     '心肺腹查体未见异常。',
-        #     '主因右髋部摔伤后疼痛肿胀。',
-        #     '入院后完善各项检查，给予右下肢持续皮牵引。'
-        # ]
         sentences = [
-            '1.患者老年女性，88岁；2.既往体健，否认药物过敏史。3.患者缘于5小时前不慎摔伤，伤及右髋部。伤后患者自感伤处疼痛，呼我院120接来我院，查左髋部X光片示：左侧粗隆间骨折。',
-            '患者精神状况好，无发热，诉右髋部疼痛，饮食差，二便正常，查体：神清，各项生命体征平稳，心肺腹查体未见异常。',
-            '女性，88岁，农民，双滦区应营子村人，主因右髋部摔伤后疼痛肿胀，活动受限5小时于2016-10-29；11：12入院。',
-            '入院后完善各项检查，给予右下肢持续皮牵引，应用健骨药物治疗，患者略发热，查血常规：白细胞数12.18*10^9/L，中性粒细胞百分比92.00%。',
-            '1患者老年男性，既往有高血压病史5年，血压最高达180/100mmHg，长期服用降压药物治疗，血压控制欠佳。'
+            '左侧粗隆间骨折。',
+            '心肺腹查体未见异常。',
+            '主因右髋部摔伤后疼痛肿胀。',
+            '入院后完善各项检查，给予右下肢持续皮牵引。'
         ]
+        # sentences = [
+        #     '1.患者老年女性，88岁；2.既往体健，否认药物过敏史。3.患者缘于5小时前不慎摔伤，伤及右髋部。伤后患者自感伤处疼痛，呼我院120接来我院，查左髋部X光片示：左侧粗隆间骨折。',
+        #     '患者精神状况好，无发热，诉右髋部疼痛，饮食差，二便正常，查体：神清，各项生命体征平稳，心肺腹查体未见异常。',
+        #     '女性，88岁，农民，双滦区应营子村人，主因右髋部摔伤后疼痛肿胀，活动受限5小时于2016-10-29；11：12入院。',
+        #     '入院后完善各项检查，给予右下肢持续皮牵引，应用健骨药物治疗，患者略发热，查血常规：白细胞数12.18*10^9/L，中性粒细胞百分比92.00%。',
+        #     '1患者老年男性，既往有高血压病史5年，血压最高达180/100mmHg，长期服用降压药物治疗，血压控制欠佳。'
+        # ]
 
         m_samples = len(sentences)
 
