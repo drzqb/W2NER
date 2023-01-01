@@ -2,7 +2,7 @@
     bert for ner with tf2.0
     bert通过transformers加载
     自定义训练过程
-    梯度累积
+    梯度累积：两个不同的学习率的梯度累积
     技巧使用： 1. 两个三对角添加新特征向量  2. 两个三对角不可能标签给logits添加负无穷项
 '''
 import os
@@ -30,7 +30,7 @@ parser.add_argument('--lr', type=float, default=1.0e-4, help='Initial learing ra
 parser.add_argument('--eps', type=float, default=1.0e-6, help='epsilon')
 parser.add_argument('--label_num', type=int, default=7, help='number of ner labels')
 parser.add_argument('--per_save', type=int, default=int(ceil(6938 / 2)), help='save model per num')
-parser.add_argument('--check', type=str, default='model/w2neraccum', help='The path where model saved')
+parser.add_argument('--check', type=str, default='model/w2neraccum2', help='The path where model saved')
 parser.add_argument('--mode', type=str, default='train0', help='The mode of train or predict as follows: '
                                                                'train0: begin to train or retrain'
                                                                'tran1:continue to train'
@@ -296,18 +296,24 @@ def querycheck(predict):
 
 
 @tf.function(experimental_relax_shapes=True)
-def train_step(data, model, gradientaccumulator, batch):
-    with tf.GradientTape() as tape:
+def train_step(data, model, gradientaccumulatorbert, gradientaccumulatorner, optimizerbert, optimizerner, batch):
+    with tf.GradientTape(persistent=True) as tape:
         _, tp, tn, fp, loss, accuracy, sumls = model(data, training=True)
 
-    trainable_variables = model.trainable_variables
-    gradients = tape.gradient(loss, trainable_variables)
+    ner_trainable_variables = [v for v in model.trainable_variables if v.name.startswith("w2ner")]
+    bert_trainable_variables = [v for v in model.trainable_variables if not v.name.startswith("w2ner")]
 
-    gradientaccumulator(gradients, sumls)
+    gradientsner = tape.gradient(loss, ner_trainable_variables)
+    gradientsbert = tape.gradient(loss, bert_trainable_variables)
 
-    if gradientaccumulator.step == params.accum_step or batch == params.per_save - 1:
-        model.optimizer.apply_gradients(zip(gradientaccumulator.gradients, trainable_variables))
-        gradientaccumulator.reset()
+    gradientaccumulatorbert(gradientsbert, sumls)
+    gradientaccumulatorner(gradientsner, sumls)
+
+    if gradientaccumulatorbert.step == params.accum_step or batch == params.per_save - 1:
+        optimizerner.apply_gradients(zip(gradientaccumulatorner.gradients, ner_trainable_variables))
+        optimizerbert.apply_gradients(zip(gradientaccumulatorbert.gradients, bert_trainable_variables))
+        gradientaccumulatorner.reset()
+        gradientaccumulatorbert.reset()
 
     return tp, tn, fp, loss, accuracy, sumls
 
@@ -375,13 +381,29 @@ class USER:
                                  warmup_steps=1 * params.per_save,
                                  )
 
-        optimizer = AdamWeightDecay(learning_rate=warmup_schedule,
-                                    weight_decay_rate=0.01,
-                                    epsilon=1.0e-6,
-                                    global_clipnorm=1.0,
-                                    exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
+        optimizerbert = AdamWeightDecay(learning_rate=warmup_schedule,
+                                        weight_decay_rate=0.01,
+                                        epsilon=1.0e-6,
+                                        global_clipnorm=1.0,
+                                        exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
 
-        model.compile(optimizer)
+        decay_schedule = keras.optimizers.schedules.PolynomialDecay(initial_learning_rate=100.0 * params.lr,
+                                                                    decay_steps=params.epochs * ceil(
+                                                                        params.per_save / params.accum_step),
+                                                                    end_learning_rate=0.0,
+                                                                    power=1.0,
+                                                                    cycle=False)
+
+        warmup_schedule = WarmUp(initial_learning_rate=100.0 * params.lr,
+                                 decay_schedule_fn=decay_schedule,
+                                 warmup_steps=1 * params.per_save,
+                                 )
+
+        optimizerner = AdamWeightDecay(learning_rate=warmup_schedule,
+                                       weight_decay_rate=0.01,
+                                       epsilon=1.0e-6,
+                                       global_clipnorm=1.0,
+                                       exclude_from_weight_decay=["bias"])
 
         train_dataloader = dataloader(['data/TFRecordFiles/train_span.tfrecord'],
                                       single_example_parser,
@@ -401,7 +423,8 @@ class USER:
                                     shuffle=False)
         F1_max = 0.0
 
-        gradientaccumulator = GradientAccumulator()
+        gradientaccumulatorbert = GradientAccumulator()
+        gradientaccumulatorner = GradientAccumulator()
 
         for epoch in range(params.epochs):
             tp = []
@@ -417,7 +440,9 @@ class USER:
             F1 = 0.0
 
             for batch, data in enumerate(train_dataloader):
-                tp_, tn_, fp_, loss_, accuracy_, sumls_ = train_step(data, model, gradientaccumulator,
+                tp_, tn_, fp_, loss_, accuracy_, sumls_ = train_step(data, model,
+                                                                     gradientaccumulatorbert, gradientaccumulatorner,
+                                                                     optimizerbert, optimizerner,
                                                                      tf.constant(batch, shape=[1],
                                                                                  dtype=tf.int32))
 
