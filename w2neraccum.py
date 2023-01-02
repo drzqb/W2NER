@@ -24,8 +24,9 @@ import argparse
 
 parser = argparse.ArgumentParser(description='manual to this script')
 parser.add_argument('--batch_size', type=int, default=2, help='Batch size during training')
-parser.add_argument('--accum_step', type=int, default=16, help='accum step size')
-parser.add_argument('--epochs', type=int, default=10, help='Epochs during training')
+parser.add_argument('--accum_step', type=int, default=8, help='accum step size')
+parser.add_argument('--epochs', type=int, default=20, help='Epochs during training')
+parser.add_argument('--warmup_epochs', type=int, default=2, help='Epochs for warmup during training')
 parser.add_argument('--lr', type=float, default=1.0e-4, help='Initial learing rate')
 parser.add_argument('--eps', type=float, default=1.0e-6, help='epsilon')
 parser.add_argument('--label_num', type=int, default=7, help='number of ner labels')
@@ -372,7 +373,7 @@ class USER:
 
         warmup_schedule = WarmUp(initial_learning_rate=params.lr,
                                  decay_schedule_fn=decay_schedule,
-                                 warmup_steps=1 * params.per_save,
+                                 warmup_steps=params.warmup_epochs * params.per_save,
                                  )
 
         optimizer = AdamWeightDecay(learning_rate=warmup_schedule,
@@ -402,6 +403,8 @@ class USER:
         F1_max = 0.0
 
         gradientaccumulator = GradientAccumulator()
+
+        print(params)
 
         for epoch in range(params.epochs):
             tp = []
