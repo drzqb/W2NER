@@ -498,91 +498,45 @@ class USER:
                               padded_shapes={"sen": [-1],
                                              "span": [-1, -1],
                                              },
-                              buffer_size=100 * params.batch_size)
+                              buffer_size=100 * params.batch_size,
+                              shuffle=False)
+
+        labels = ['NONE', 'NNW', "TREATMENT", "BODY", "SIGNS", "CHECK", "DISEASE"]
 
         tp, tn, fp = 0.0, 0.0, 0.0
 
         fw = open(params.check + "/log.txt", "w", encoding="utf-8")
 
-        for data in dev_data:
-            sen = data["sen"][0][1:-1]
-            start = data["start"][0]
-            end = data["end"][0]
-            span = data["span"][0]
-            val = data["val"][0]
+        for batch, data in enumerate(dev_data):
+            print("\r%d" % (batch), end="")
 
-            fw.write("句子\n")
+            sen = data["sen"][0][1:-1]
+            span = data["span"][0]
+
+            fw.write("句子：\n")
             fw.write("".join([char_inverse_dict[s] for s in sen.numpy()]) + "\n\n")
 
-            fw.write("start\n")
-            start = start.numpy()
-            for i in range(len(start)):
-                fw.write(str(i) + ": ")
-                for j in range(len(start[i])):
-                    if start[i, j] == 1:
-                        fw.write("%d\t" % j)
-
-                fw.write("\n")
-            fw.write("\n")
-
-            fw.write("end\n")
-            end = end.numpy()
-            for i in range(len(end)):
-                fw.write(str(i) + ": ")
-                for j in range(len(end[i])):
-                    if end[i, j] == 1:
-                        fw.write("%d\t" % j)
-
-                fw.write("\n")
-            fw.write("\n")
-
-            fw.write("span\n")
+            fw.write("span_real：\n")
             span = span.numpy()
-            val = val.numpy()
 
             for i in range(len(span)):
-                fw.write(str(i) + ": ")
-                for j in range(len(span[i])):
-                    for k in range(len(span[i, j])):
-                        if val[i, j, k] == 1:
-                            fw.write("%d;%d;%d\t" % (j, k, span[i, j, k]))
-                fw.write("\n")
+                for j in range(i + 1):
+                    if span[i, j] > 0:
+                        fw.write("%d;%d;%s\n" % (j, i, labels[span[i, j]]))
             fw.write("\n")
 
-            fw.write("val\n")
-            for i in range(len(val)):
-                fw.write(str(i) + ": ")
-                for j in range(len(val[i])):
-                    for k in range(len(val[i, j])):
-                        if val[i, j, k] == 1:
-                            fw.write("%d;%d\t" % (j, k))
-                fw.write("\n")
-            fw.write("\n")
+            span_predict_, tp_, tn_, fp_, _, _ = model.predict(data, verbose=0)
 
-            span_predict_, _, _, tp_, tn_, fp_ = model.predict(data)
-
-            fw.write("span_real\n")
+            fw.write("span_pred：\n")
             for i in range(len(span)):
-                fw.write(str(i) + ": ")
-                for j in range(len(span[i])):
-                    for k in range(len(span[i, j])):
-                        if val[i, j, k] == 1 and span[i, j, k] == 1:
-                            fw.write("%d;%d\t" % (j, k))
-                fw.write("\n")
+                for j in range(i + 1):
+                    if span_predict_[0, i, j] > 0:
+                        fw.write("%d;%d;%s\n" % (j, i, labels[span_predict_[0, i, j]]))
+
             fw.write("\n")
 
-            fw.write("predict\n")
-            span_predict_ = span_predict_[0]
-            for i in range(len(span_predict_)):
-                fw.write(str(i) + ": ")
-                for j in range(len(span_predict_[i])):
-                    for k in range(len(span_predict_[i, j])):
-                        if span_predict_[i, j, k] == 1:
-                            fw.write("%d;%d\t" % (j, k))
-                fw.write("\n")
-            fw.write("\n")
-
-            fw.write("TP: %d TN: %d FP: %d\n\n" % (tp_, tn_, fp_))
+            fw.write("TP: %d TN: %d FP: %d\n" % (tp_, tn_, fp_))
+            fw.write("----------------------------------------------\n")
 
             tp += tp_
             tn += tn_
@@ -591,6 +545,8 @@ class USER:
         precision = tp / (tp + fp + params.eps)
         recall = tp / (tp + tn + params.eps)
         F1 = 2.0 * precision * recall / (precision + recall + params.eps)
+
+        fw.write('\nprecision: %.4f recall: %.4f F1: %.4f\n\n' % (precision, recall, F1))
 
         sys.stdout.write('\nprecision: %.4f recall: %.4f F1: %.4f\n\n' % (precision, recall, F1))
         sys.stdout.flush()
